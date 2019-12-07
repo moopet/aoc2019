@@ -20,18 +20,12 @@ class IntcodeError(Exception):
 
 
 class IntcodeMachine:
-    ip = 0
-    is_running = False
-    is_waiting = False
-    inputs = []
-    outputs = []
-    program = []
-    step_counter = 0
-    name = None
+    """Intcode machine emulator."""
 
-    def __init__(self, name = None, verbose = False):
+    def __init__(self, name = None, verbose = False, debugging = False):
         self.verbose = verbose
-        self.name = name
+        self.debugging = debugging
+        self.name = name or "unnamed"
 
         self.reset()
 
@@ -223,24 +217,26 @@ class IntcodeMachine:
             5: self.jump_if_true,
             6: self.jump_if_false,
             7: self.set_if_less_than,
-            7: self.set_if_equal,
+            8: self.set_if_equal,
             99: self.halt
         }
 
         opcode = self.get_opcode()
 
         if not opcode in instruction_set:
-            raise IntcodeError("Unknown opcode")
+            raise IntcodeError("Unknown opcode: {opcode}".format(opcode=opcode))
+
+        if self.debugging:
+            self.debug()
 
         self.is_waiting = False
 
-        self.debug()
         instruction_set[opcode]()
         self.step_counter = self.step_counter + 1
 
 
     def debug(self):
-        return
+        print ("")
         print ("Machine:", self.name)
         print ("IP:", self.ip)
         print ("Inputs:", self.inputs)
@@ -339,7 +335,7 @@ class IntcodeMachine:
         dest = parameters[1]
 
         if self.verbose:
-            print (self.name, self.ip, "(jump if false)", paramters)
+            print (self.name, self.ip, "(jump if false)", parameters)
 
         if value == 0:
             self.jump(dest)
@@ -387,18 +383,19 @@ class IntcodeMachine:
 class AmplifierGroup:
     """A group of amplifiers connected in series."""
 
-    def __init__(self, sequence, program = None, verbose = False):
+    def __init__(self, sequence, program = None, verbose = False, debugging = False):
         self.amplifiers = []
         self.current_index = 0
         self.carry = None
         self.sequence = sequence
         self.verbose = verbose
+        self.debugging = debugging
         self.final_result = None
 
         names = "ABCDE"
 
         for phase in sequence:
-            amplifier = IntcodeMachine(verbose = verbose)
+            amplifier = IntcodeMachine(verbose = verbose, debugging = debugging)
 
             amplifier.name = names[0]
             names = names[1:]
@@ -475,6 +472,48 @@ def testIntcodeMachine():
                  "program": [3, 0, 4, 0, 99],
                  "inputs": [123],
                  "outputs": [123]
+             },
+             {
+                 "name": "is non-zero (position mode)",
+                 "program": [3,12,6,12,15,1,13,14,13,4,13,99,-1,0,1,9],
+                 "inputs": [123],
+                 "outputs": [1]
+             },
+             {
+                 "name": "is non-zero (position mode, negated)",
+                 "program": [3,12,6,12,15,1,13,14,13,4,13,99,-1,0,1,9],
+                 "inputs": [0],
+                 "outputs": [0]
+             },
+             {
+                 "name": "is non-zero (immediate mode)",
+                 "program": [3,3,1105,-1,9,1101,0,0,12,4,12,99,1],
+                 "inputs": [123],
+                 "outputs": [1]
+             },
+             {
+                 "name": "is non-zero (immediate mode, negated)",
+                 "program": [3,3,1105,-1,9,1101,0,0,12,4,12,99,1],
+                 "inputs": [0],
+                 "outputs": [0]
+             },
+             {
+                 "name": "day 5 larger example (less than 8)",
+                 "program": [3,21,1008,21,8,20,1005,20,22,107,8,21,20,1006,20,31,1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99],
+                 "inputs": [4],
+                 "outputs": [999]
+             },
+             {
+                 "name": "day 5 larger example (equal 8)",
+                 "program": [3,21,1008,21,8,20,1005,20,22,107,8,21,20,1006,20,31,1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99],
+                 "inputs": [8],
+                 "outputs": [1000]
+             },
+             {
+                 "name": "day 5 larger example (greater than 8)",
+                 "program": [3,21,1008,21,8,20,1005,20,22,107,8,21,20,1006,20,31,1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99],
+                 "inputs": [10],
+                 "outputs": [1001]
              }
         ]
 
@@ -483,7 +522,7 @@ def testIntcodeMachine():
     for test in tests:
         print ("Testing \"", test["name"], "\", ", test["inputs"], " -> ", test["outputs"], sep="")
 
-        machine = IntcodeMachine(verbose = False)
+        machine = IntcodeMachine(verbose = False, debugging = False)
         machine.set_program(test['program'])
         machine.set_inputs(test['inputs'])
 
@@ -500,7 +539,7 @@ def testIntcodeMachine():
         if result == test["outputs"]:
             print ("Pass")
         else:
-            print ("Fail: got ", signal)
+            print ("Fail: got ", result)
             overall_success = False
             exit()
 
@@ -533,8 +572,9 @@ def testAmplifierGroup():
 
         result = None
 
+        group = AmplifierGroup(program = test['program'], sequence = test['sequence'], verbose = False, debugging = False)
+
         try:
-            group = AmplifierGroup(program = test['program'], sequence = test['sequence'], verbose = False)
             result = group.run()
         except IntcodeError as error:
             result = group.final_result
@@ -564,17 +604,19 @@ def main():
 
     print ("Tests passed.")
 
-    exit()
     sequences = list(permutations(range(5, 10)))
     signals = []
 
     for sequence in sequences:
-        group = AmplifierGroup(sequence, verbose = True)
-        result = group.run()
+        group = AmplifierGroup(sequence, verbose = False, debugging = False)
+
+        try:
+            result = group.run()
+        except IntcodeError as error:
+            result = group.final_result
 
         signals.append(result)
 
-    print (signals)
     print ("Result: ", max(signals))
 
 
