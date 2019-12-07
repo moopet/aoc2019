@@ -27,9 +27,12 @@ class IntcodeMachine:
     outputs = []
     program = []
     step_counter = 0
+    name = None
 
-    def __init__(self, verbose = False):
+    def __init__(self, name = None, verbose = False):
         self.verbose = verbose
+        self.name = name
+
         self.reset()
 
 
@@ -47,7 +50,7 @@ class IntcodeMachine:
     def set_program(self, program):
         """Load and initialise a new program."""
 
-        self.program = program
+        self.program = program.copy()
         self.reset()
 
 
@@ -231,8 +234,23 @@ class IntcodeMachine:
 
         self.is_waiting = False
 
+        self.debug()
         instruction_set[opcode]()
         self.step_counter = self.step_counter + 1
+
+
+    def debug(self):
+        return
+        print ("Machine:", self.name)
+        print ("IP:", self.ip)
+        print ("Inputs:", self.inputs)
+        print ("Outputs:", self.outputs)
+        print ("Status:", "running" if self.is_running else "not running", "waiting" if self.is_waiting else "not waiting")
+
+        for x in range(len(self.program)):
+            print ("* " if x == self.ip else "  ", x, "] ", self.program[x], sep = "")
+
+        input ("Press enter to continue")
 
 
     def add(self):
@@ -244,7 +262,7 @@ class IntcodeMachine:
         value = parameters[0] + parameters[1]
 
         if self.verbose:
-            print (self.ip, " (add)", parameters, ":", [dest], "=", value)
+            print (self.name, self.ip, "(add)", parameters, ":", [dest], "=", value)
 
         self.set_memory_value(dest, value)
         self.jump_rel(4)
@@ -259,7 +277,7 @@ class IntcodeMachine:
         value = parameters[0] * parameters[1]
 
         if self.verbose:
-            print (self.ip, " (multiply)", parameters, ":", [dest], "=", value)
+            print (self.name, self.ip, "(multiply)", parameters, ":", [dest], "=", value)
 
         self.set_memory_value(dest, value)
         self.jump_rel(4)
@@ -278,7 +296,7 @@ class IntcodeMachine:
         value = self.get_input()
 
         if self.verbose:
-            print (self.ip, " (input)", [dest], "=", value)
+            print (self.name, self.ip, "(input)", [dest], "=", value)
 
         self.set_memory_value(dest, value)
         self.jump_rel(2)
@@ -291,7 +309,7 @@ class IntcodeMachine:
         value = parameters[0]
 
         if self.verbose:
-            print (self.ip, " (output) ", value)
+            print (self.name, self.ip, "(output) ", value)
 
         self.add_output(value)
         self.jump_rel(2)
@@ -305,7 +323,7 @@ class IntcodeMachine:
         dest = parameters[1]
 
         if self.verbose:
-            print (self.ip, " (jump if true)", parameters)
+            print (self.name, self.ip, "(jump if true)", parameters)
 
         if value != 0:
             self.jump(dest)
@@ -321,7 +339,7 @@ class IntcodeMachine:
         dest = parameters[1]
 
         if self.verbose:
-            print (self.ip, " (jump if false)", paramters)
+            print (self.name, self.ip, "(jump if false)", paramters)
 
         if value == 0:
             self.jump(dest)
@@ -338,7 +356,7 @@ class IntcodeMachine:
         value = 1 if parameters[0] < parameters[1] else 0
 
         if self.verbose:
-            print (self.ip, " (set if less than) ", parameters, ": ", [dest], "=", value)
+            print (self.name, self.ip, "(set if less than) ", parameters, ": ", [dest], "=", value)
 
         self.set_memory_value(dest, value)
         self.jump_rel(4)
@@ -353,13 +371,16 @@ class IntcodeMachine:
         value = 1 if parameters[0] == parameters[1] else 0
 
         if self.verbose:
-            print (self.ip, " (set if equal) ", parameters, ": ", [dest], "=", value)
+            print (self.name, self.ip, "(set if equal) ", parameters, ": ", [dest], "=", value)
 
         self.set_memory_value(dest, value)
         self.jump_rel(4)
 
 
     def halt(self):
+        if self.verbose:
+            print (self.name, self.ip, "(halt)")
+
         self.is_running = False
 
 
@@ -372,9 +393,15 @@ class AmplifierGroup:
         self.carry = None
         self.sequence = sequence
         self.verbose = verbose
+        self.final_result = None
+
+        names = "ABCDE"
 
         for phase in sequence:
             amplifier = IntcodeMachine(verbose = verbose)
+
+            amplifier.name = names[0]
+            names = names[1:]
 
             if program:
                 amplifier.set_program(program)
@@ -413,28 +440,24 @@ class AmplifierGroup:
             if amplifier.is_waiting:
                 raise IntcodeError("Amplifier hanging waiting on input.")
 
-            if not amplifier.is_running:
-                print ("Amplifier ran", amplifier.step_counter, "instructions")
-
-                raise IntcodeError("Amplifier terminated without any output")
-
             amplifier.step()
 
         output = amplifier.get_output()
+        self.final_result = output
 
         # Switch to next amplifier.
         self.current_index = (self.current_index + 1) % len(self.amplifiers)
-        amplifier = self.amplifiers[self.current_index]
-        amplifier.add_input(output)
+        next_amplifier = self.amplifiers[self.current_index]
+        next_amplifier.add_input(output)
 
 
     def run(self):
         """Run a single permutation through the group of amplifiers."""
 
         while self.is_running():
-            signal = self.step()
+            self.step()
 
-        return signal
+        return self.final_result
 
 
 def testIntcodeMachine():
@@ -446,16 +469,16 @@ def testIntcodeMachine():
                 "program": [1002, 4, 3, 0, 99],
                 "inputs": [],
                 "outputs": []
-            },
-            {
-                "name": "print input",
-                "program": [3, 0, 4, 0, 99],
-                "inputs": [123],
-                "outputs": [123]
-            }
+             },
+             {
+                 "name": "print input",
+                 "program": [3, 0, 4, 0, 99],
+                 "inputs": [123],
+                 "outputs": [123]
+             }
         ]
 
-    overallSuccess = True
+    overall_success = True
 
     for test in tests:
         print ("Testing \"", test["name"], "\", ", test["inputs"], " -> ", test["outputs"], sep="")
@@ -468,7 +491,7 @@ def testIntcodeMachine():
             machine.run()
         except IntcodeError as error:
             print ("Fail: got IntcodeError", error)
-            overallSuccess = False
+            overall_success = False
             print ("--")
             continue
 
@@ -478,12 +501,13 @@ def testIntcodeMachine():
             print ("Pass")
         else:
             print ("Fail: got ", signal)
-            overallSuccess = False
+            overall_success = False
             exit()
 
         print ("--")
 
-    return overallSuccess
+
+    return overall_success
 
 
 def testAmplifierGroup():
@@ -499,8 +523,10 @@ def testAmplifierGroup():
                 "program": [3, 52, 1001, 52, -5, 52, 3, 53, 1, 52, 56, 54, 1007, 54, 5, 55, 1005, 55, 26, 1001, 54, -5, 54, 1105, 1, 12, 1, 53, 54, 53, 1008, 54, 0, 55, 1001, 55, 1, 55, 2, 53, 55, 53, 4, 53, 1001, 56, -1, 56, 1005, 56, 6, 99, 0, 0, 0, 0, 10],
                 "sequence": [9, 7, 8, 5, 6],
                 "output": 18216
-            }
+           }
         ]
+
+    overall_success = True
 
     for test in tests:
         print ("Testing", test["sequence"], "->", test["output"])
@@ -508,20 +534,23 @@ def testAmplifierGroup():
         result = None
 
         try:
-            group = AmplifierGroup(program = test['program'], sequence
-                    = test['sequence'], verbose = True)
+            group = AmplifierGroup(program = test['program'], sequence = test['sequence'], verbose = False)
             result = group.run()
         except IntcodeError as error:
-            print ("Fail: got IntcodeError", error)
-            return False
+            result = group.final_result
+            #print ("Fail: got IntcodeError", error)
+            #overall_success = False
+            #continue
 
-        if result == test["outputs"]:
+        if result == test["output"]:
             print ("Pass")
         else:
             print ("Fail: got ", result)
-            return False
+            overall_success = False
 
-    return True
+    print ("--")
+
+    return overall_success
 
 
 def main():
