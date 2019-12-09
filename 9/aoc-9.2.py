@@ -560,7 +560,7 @@ def main():
 
     machine = IntcodeMachine(debugging = False)
     machine.load_program_from_file("aoc-9.1.input")
-    machine.add_input(1)
+    machine.add_input(2)
     machine.run()
     result = machine.get_outputs()
 
